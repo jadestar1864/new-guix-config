@@ -1,0 +1,19 @@
+keys:
+  - &jaden 9E1B506E68262E3DC5D1058FD885C564F0A19329
+  - &users:
+    - &user_jaden age16n8h48ym2fc57j749p0gc9qwhawv4ukk505hqhwt57y900t4c5sqe7v5nr
+  - &hosts:
+    - &thinkpadx1 age1cdhwvun75xadusuy375d35qz9vx0vxrw0dqwjpwjzapkudkmpphqgdqvfc
+creation_rules:
+  - path_regex: ^config/operating-systems/thinkpadx1/secrets.yaml$
+    key_groups:
+      - pgp:
+          - *jaden
+        age:
+          - *thinkpadx1
+  - path_regex: ^config/home-environments/jaden/base/secrets.yaml$
+    key_groups:
+      - pgp:
+          - *jaden
+        age:
+          - *user_jaden
