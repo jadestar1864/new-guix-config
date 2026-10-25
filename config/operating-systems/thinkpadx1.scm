@@ -1,0 +1,162 @@
+(define-module (config operating-systems thinkpadx1)
+  #:use-module (guix gexp)
+  #:use-module (srfi srfi-1)
+
+  #:use-module (gnu bootloader)
+  #:use-module (gnu bootloader grub)
+
+  #:use-module (gnu packages admin)
+  #:use-module (gnu packages security-token)
+  #:use-module (gnu packages window-management)
+
+  #:use-module (gnu services)
+  #:use-module (gnu services admin)
+  #:use-module (gnu services base)
+  #:use-module (gnu services dbus)
+  #:use-module (gnu services guix)
+  #:use-module (gnu services linux)
+  #:use-module (gnu services networking)
+  #:use-module (gnu services security-token)
+  #:use-module (gnu services shepherd)
+  #:use-module (gnu services pm)
+
+  #:use-module (gnu system)
+  #:use-module (gnu system accounts)
+  #:use-module (gnu system file-systems)
+  #:use-module (gnu system shadow)
+
+  #:use-module (nongnu packages linux)
+  #:use-module (nongnu system linux-initrd)
+
+  #:use-module (config operating-systems base-desktop)
+
+  #:use-module ((config home-environments jaden)
+                #:prefix home:)
+  #:use-module ((config operating-systems base users)
+                #:prefix user:)
+  #:use-module ((config operating-systems thinkpadx1 file-systems)
+                #:prefix file-systems:)
+  #:use-module ((config operating-systems thinkpadx1 opendoas)
+                #:prefix rules:))
+
+(define custom-polkit-rules
+  (file-union
+    "custom-polkit-rules"
+    `(("share/polkit-1/rules.d/40-allow-pcscd.rules" ,(plain-file "40-allow-pcscd.rules" "polkit.addRule(function(action, subject) {
+  if (
+    subject.isInGroup(\"plugdev\")
+    && (
+      action.id === \"org.debian.pcsc-lite.access_pcsc\"
+      || action.id === \"org.debian.pcsc-lite.access_card\"
+    )
+  ) {
+    return polkit.Result.YES;
+  }
+
+  return polkit.Result.NOT_HANDLED;
+});")))))
+
+(define thinkpadx1
+  (operating-system
+    (inherit base-desktop)
+    (host-name "thinkpadx1")
+    (timezone "America/Chicago")
+    (bootloader
+      (bootloader-configuration
+        (bootloader grub-efi-bootloader)
+        (targets '("/boot/efi"))
+        (timeout 1)))
+    (initrd microcode-initrd)
+
+    (firmware
+      (list
+        sof-firmware
+        linux-firmware))
+
+    (packages
+      (cons*
+        #|window-management|# niri
+        (operating-system-packages base-desktop)))
+
+    (users
+      (map (lambda (account)
+                   (if (string=? (user-account-name account) "jaden")
+                       (user-account
+                         (inherit account)
+                         (supplementary-groups
+                           (cons*
+                             "seat"
+                             "plugdev"
+                             (user-account-supplementary-groups account))))
+                       ;; else return identity
+                       account))
+           (operating-system-users base-desktop)))
+  
+    (groups
+      (cons*
+        (user-group (name "plugdev"))
+        %base-groups))
+
+    (mapped-devices file-systems:%mapped-devices)
+
+    (file-systems file-systems:%volumes)
+
+    (swap-devices
+      (list
+        (swap-space
+          (target "/swap/swapfile")
+          (dependencies (filter (file-system-mount-point-predicate "/swap")
+                                file-systems)))))
+
+    (services
+      (cons*
+        #|Guix services|#
+        (service shared-cache-service-type
+          (shared-cache-configuration
+            (users
+              (list (user-cache (user "jaden"))))))
+        (service guix-home-service-type
+          `(("jaden" ,home:jaden)))
+
+        (service zram-device-service-type
+          (zram-device-configuration
+            (priority 100)
+            (size "16GB")
+            (compression-algorithm 'lz4)))
+
+        #|Device management|#
+        (simple-service 'custom-polkit-rules
+                        polkit-service-type
+                        (list custom-polkit-rules))
+
+        #|Smart card services|#
+        (service pcscd-service-type)
+        (udev-rules-service 'u2f libfido2)
+        (udev-rules-service 'yubikey yubikey-personalization)
+
+        #|Power management services|#
+        (service tlp-service-type
+          (tlp-configuration
+            (start-charge-thresh-bat0 70)
+            (stop-charge-thresh-bat0 90)))
+
+        #|Networking services|#
+        (service iwd-service-type)
+
+        (service network-manager-service-type
+          (network-manager-configuration
+            (extra-configuration-files
+              `(("001-iwd.conf"
+                 ,(plain-file "nm-iwd.conf"
+                              "[device]\nwifi.backend=iwd\n"))))))
+
+        (modify-services (operating-system-user-services base-desktop)
+          (opendoas-service-type
+            config =>
+            (opendoas-configuration
+              (inherit config)
+              (rules
+                (append rules:iwd
+                        (opendoas-configuration-rules config))))))))))
+
+thinkpadx1

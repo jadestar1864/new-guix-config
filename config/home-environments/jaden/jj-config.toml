@@ -1,0 +1,12 @@
+[user]
+name = "Jaden Nola"
+email = "proto@jadestar.dev"
+
+[signing]
+behavior = "own"
+backend = "gpg"
+key = "7C7676FCAF8DF0A8"
+
+[ui]
+editor = "hx"
+show-cryptographic-signatures = true
