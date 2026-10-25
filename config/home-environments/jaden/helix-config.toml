@@ -1,0 +1,12 @@
+[editor]
+line-number = "absolute"
+bufferline = "multiple"
+color-modes = true
+
+[editor.indent-guides]
+render = true
+
+[editor.cursor-shape]
+normal = "block"
+insert = "bar"
+select = "underline"
